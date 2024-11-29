@@ -4,27 +4,25 @@ import {
   Module,
   NestModule,
 } from "@nestjs/common";
-import {
-  RateLimiterOptions,
-  RateLimitMiddleware,
-} from "../middlewares/rate-limit.middleware";
-import { RATE_LIMITER_OPTIONS } from "../decorators/rate-limit.decorator";
+import { RateLimiterOptions } from "@canmertinyo/rate-limit-express";
+import { RATE_LIMITER_MODULE_OPTIONS } from "../decorators/rate-limit.decorator";
+import { Reflector } from "@nestjs/core";
 
 @Module({})
 export class RateLimiterModule implements NestModule {
   public static register(options: RateLimiterOptions): DynamicModule {
     return {
-      imports: [],
+      module: RateLimiterModule,
       providers: [
+        Reflector,
         {
-          provide: RATE_LIMITER_OPTIONS,
+          provide: RATE_LIMITER_MODULE_OPTIONS,
           useValue: options,
         },
       ],
-      module: RateLimiterModule,
+      exports: [RATE_LIMITER_MODULE_OPTIONS, Reflector],
     };
   }
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(RateLimitMiddleware).forRoutes("*");
-  }
+
+  configure(consumer: MiddlewareConsumer) {}
 }

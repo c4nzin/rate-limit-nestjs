@@ -1,43 +1,53 @@
-import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
+import {
+  CanActivate,
+  ExecutionContext,
+  Inject,
+  Injectable,
+} from "@nestjs/common";
+import {
+  rateLimiter,
+  RateLimiterOptions,
+} from "@canmertinyo/rate-limit-express";
+import {
+  RATE_LIMITER_MODULE_OPTIONS,
+  RATE_LIMITER_OPTIONS,
+} from "../decorators/rate-limit.decorator";
 import { Reflector } from "@nestjs/core";
-import { RATE_LIMITER_OPTIONS } from "../decorators/rate-limit.decorator";
-import { Request } from "express";
+import { SKIP_RATE_LIMIT } from "../decorators/skip-rate-limit.decorator";
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
-  private store: Record<string, { count: number; timestamp: number }> = {};
-
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    @Inject(RATE_LIMITER_MODULE_OPTIONS)
+    private rateLimiterModuleOptions: RateLimiterOptions,
+    private readonly reflector: Reflector
+  ) {}
 
   public canActivate(context: ExecutionContext): boolean {
-    const options = this.reflector.get<{ ms: number; maxRequest: number }>(
+    const moduleOptions = this.rateLimiterModuleOptions;
+    const options = this.reflector.get<RateLimiterOptions>(
       RATE_LIMITER_OPTIONS,
       context.getHandler()
     );
 
-    if (!options) {
+    const skipRateLimit = this.reflector.get(
+      SKIP_RATE_LIMIT,
+      context.getHandler()
+    );
+
+    if (skipRateLimit) {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<Request>();
-    const ip = request.ip!;
-    const currentTime = Date.now();
-    const startTime = currentTime - options.ms;
+    var req = context.switchToHttp().getRequest();
+    var res = context.switchToHttp().getResponse();
 
-    if (!this.store[ip]) {
-      this.store[ip] = { count: 0, timestamp: currentTime };
+    rateLimiter(options ?? moduleOptions)(req, res, () => {});
+
+    if (res.headersSent || res.finished) {
+      return false;
     }
 
-    if (this.store[ip].timestamp < startTime) {
-      this.store[ip].count = 0;
-      this.store[ip].timestamp = currentTime;
-    }
-
-    if (this.store[ip].count < options.maxRequest) {
-      this.store[ip].count += 1;
-      return true;
-    }
-
-    return false;
+    return true;
   }
 }
